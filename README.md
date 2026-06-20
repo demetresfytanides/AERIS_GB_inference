@@ -104,7 +104,6 @@ Each file: ~7.2 GB (WFIP3/AWAKEN production; zlib complevel=1).
 | Input variables | 69 (no SST) |
 | Diffusion | DPMSolver++ Heun, 10 sub-steps default |
 | Training step | ~1.1 M (lr-reduced run 2) |
-| Source | `/flare/SAFS/vhat/checkpoints/p_1Bd66c_1100k_lrrd2` |
 
 The checkpoint ships as 10 pipeline-parallel (PP) shards:
 `checkpoint_PP0.pth .. checkpoint_PP9.pth` plus `.hydra/config.yaml`.
