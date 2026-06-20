@@ -68,9 +68,6 @@ ERA5 data for building your own ICs is also available via
 `gs://weatherbench2/datasets/era5/`) or locally on Flare at
 `/flare/datasets/wb2/0.25deg_1_step_6hr_h5df_fix_bug/`.
 
-For the full IC builder and benchmark pipeline see the
-[agentic-wxbench](https://github.com/demetresfytanides/agentic-wxbench) project.
-
 ### 3. Submit the job
 
 Edit the variables block at the top of `inference/run_aeris.pbs`:
