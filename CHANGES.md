@@ -97,17 +97,6 @@ orderings each). The patch script covers all six.
 
 ---
 
-## Bug fix 3 — ARCO v3 returns NaN for static fields (IC builder only)
-
-**Not affecting this repo** (the IC builder is not included here).
-
-For reference: `geopotential_at_surface` and `land_sea_mask` return NaN
-from the ARCO ERA5 v3 zarr store despite being listed in the dataset.
-The fix is to fall back to the WB2 HDF5 at
-`/flare/datasets/wb2/0.25deg_1_step_6hr_h5df_fix_bug/test/2020_0000.h5`
-for those two fields only.
-
----
 
 ## Design change — custom rollout replacing vendor inference.py
 
