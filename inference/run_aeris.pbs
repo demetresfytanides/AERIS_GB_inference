@@ -1,0 +1,122 @@
+#!/bin/bash
+# ===========================================================================
+# run_aeris.pbs — AERIS-GB K=50 ensemble, 16 nodes, DP=8 on Aurora XPU
+#
+# Validated topology: 16 nodes × 8 ppn = 128 ranks
+#   SP = WP_X × WP_Y = 4 × 4 = 16   (tiles per model instance)
+#   DP = 128 / 16 = 8                (independent DP groups)
+#   Members per DP group: 7 (groups 0-1), 6 (groups 2-7) → total 50
+#   Wall-clock: ~5 h for 240 h forecast, K=50
+#
+# See CHANGES.md and README.md for topology rationale and known failure modes.
+#
+# Usage:
+#   1. Edit the USER CONFIGURATION block below.
+#   2. Run once: bash setup_venv.sh   (bootstraps the venv)
+#   3. Submit: qsub run_aeris.pbs
+# ===========================================================================
+
+# ---- PBS headers -----------------------------------------------------------
+#PBS -A AI4SRM
+#PBS -q capacity
+#PBS -l walltime=06:00:00
+#PBS -l select=16
+#PBS -l filesystems=flare:home
+#PBS -N aeris_k50
+
+# ---- USER CONFIGURATION ----------------------------------------------------
+# Edit these four variables before submitting.
+
+IC_NC="/path/to/aeris_YYYYMMDDTHH.nc"    # Pre-built ARCO ERA5 IC NetCDF
+CYCLE="2024-09-20T00:00:00Z"             # Forecast cycle (must match IC file)
+OUT_DIR="/path/to/output/era5_k50"       # Output directory (will be created)
+MEMBERS=50                               # Ensemble size (50 for paper-grade)
+
+# ---- Less commonly changed -------------------------------------------------
+LEAD_HOURS=240                           # Forecast horizon (hours)
+DIFFUSION_STEPS=10                       # DPMSolver++ Heun sub-steps per rollout step
+WP_X=4                                   # Window-parallel tiles in X
+WP_Y=4                                   # Window-parallel tiles in Y
+PPN=8                                    # MPI ranks per node
+
+# Checkpoint: uses the one bundled in this repo
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
+CKPT_DIR="${REPO_DIR}/checkpoints/p_1Bd66c_1100k_lrrd_base"
+
+# ---------------------------------------------------------------------------
+
+set -eo pipefail
+echo "[pbs] start: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+module load frameworks
+
+# ---- Environment -----------------------------------------------------------
+export PYTHONNOUSERSITE=1
+export PYTHONIOENCODING=utf-8
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-7}
+ulimit -n 524288
+
+# CCL / fabric settings (validated for DP=8 on Aurora)
+export PALS_PMI=pmix
+export CCL_KVS_MODE=mpi
+export CCL_KVS_USE_MPI_RANKS=1
+export CCL_ATL_TRANSPORT=mpi
+export CCL_ZE_CACHE_OPEN_IPC_HANDLES_THRESHOLD=2048
+export CCL_LOG_LEVEL=ERROR
+export CCL_OP_SYNC=1
+export CCL_ATL_SYNC_COLL=1
+export FI_CXI_DEFAULT_CQ_SIZE=4096
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=userfaultfd
+
+# CPU affinity for 8 ppn (first 8 of the 12-tile per-node list)
+export CPU_BIND="verbose,list:2-7:10-15:18-23:26-31:34-39:42-47:54-59:62-67:70-75:78-83:86-91:94-99"
+export CCL_WORKER_AFFINITY=1,9,17,25,33,41,53,61,69,77,85,93
+
+# ---- Distributed topology --------------------------------------------------
+export NNODES=$(wc -l < "${PBS_NODEFILE}")
+export TOTAL_RANKS=$(( NNODES * PPN ))
+export MASTER_ADDR=$(head -n 1 "${PBS_NODEFILE}")
+export MASTER_PORT=29506
+export HYDRA_FULL_ERROR=1
+
+echo "[pbs] nodes=${NNODES}  ppn=${PPN}  total_ranks=${TOTAL_RANKS}"
+echo "[pbs] DP=$((TOTAL_RANKS / (WP_X * WP_Y)))  SP=$((WP_X * WP_Y))"
+
+# ---- Bootstrap venv (idempotent: no-op if already built) -------------------
+bash "${SCRIPT_DIR}/setup_venv.sh"
+source "${REPO_DIR}/data/cache/venvs/aeris/.venv/bin/activate"
+
+# aeris_wp_inference must be on PYTHONPATH (the script also adds it via sys.path,
+# but setting it here ensures mpi4py sees it before fork as well)
+export PYTHONPATH="${REPO_DIR}/aeris_wp_inference:${PYTHONPATH:-}"
+
+# ---- Validate ---------------------------------------------------------------
+echo "[pbs] checkpoint: ${CKPT_DIR}"
+echo "[pbs] IC:         ${IC_NC}"
+echo "[pbs] output:     ${OUT_DIR}"
+[[ -f "${IC_NC}" ]]        || { echo "[pbs] ERROR: IC file not found: ${IC_NC}"; exit 2; }
+[[ -d "${CKPT_DIR}" ]]     || { echo "[pbs] ERROR: checkpoint dir not found: ${CKPT_DIR}"; exit 2; }
+
+mkdir -p "${OUT_DIR}"
+
+# ---- Launch ----------------------------------------------------------------
+mpiexec --verbose --envall \
+    -n "${TOTAL_RANKS}" -ppn "${PPN}" \
+    --cpu-bind "${CPU_BIND}" \
+    python "${SCRIPT_DIR}/aeris_inference.py" \
+        --cycle           "${CYCLE}" \
+        --ic-source       "${IC_NC}" \
+        --lead-hours      "${LEAD_HOURS}" \
+        --members         "${MEMBERS}" \
+        --diffusion-steps "${DIFFUSION_STEPS}" \
+        --wp-x            "${WP_X}" \
+        --wp-y            "${WP_Y}" \
+        --checkpoint-dir  "${CKPT_DIR}" \
+        --output-dir      "${OUT_DIR}" \
+        --write-members
+
+rc=$?
+echo "[pbs] end: $(date -u +%Y-%m-%dT%H:%M:%SZ)  exit=${rc}"
+exit ${rc}

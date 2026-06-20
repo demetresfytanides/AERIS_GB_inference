@@ -1,0 +1,18 @@
+# Checkpoint weight files (too large for git; copy from source)
+checkpoints/**/*.pth
+checkpoints/**/output/
+
+# Venv and pip cache (created by setup_venv.sh)
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
