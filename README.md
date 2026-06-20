@@ -53,29 +53,34 @@ module load frameworks
 bash inference/setup_venv.sh
 ```
 
-### 2. Prepare an initial condition NetCDF
+### 2. Point to an initial condition NetCDF
 
-The inference script expects an ARCO ERA5 IC file shaped as:
+A sample IC for **2024-09-20T00:00:00Z** is provided at:
 
-- 69 prognostic variables (no SST) at the forecast cycle timestamp
-- `toa_incident_solar_radiation` with a `time` dimension covering the full
-  rollout (e.g. 41 steps for 240 h at 6 h resolution)
-- `geopotential_at_surface` and `land_sea_mask` (static fields)
-- Grid: 721 lat × 1440 lon (0.25°, lat 90→−90)
+```
+samples/aeris_20240920T00.nc
+```
 
-> The IC builder is not included here. Use `scripts/prefetch_aeris_ic.py`
-> from the `agentic-wxbench` repo, or adapt it for your own ERA5 source.
+(On Flare at `/flare/Chicago_AIDT/dfytanidis/AERIS_GB_inference/samples/`; not tracked by git due to file size.)
+
+ERA5 data for building your own ICs is also available via
+[WeatherBench2](https://weatherbench2.readthedocs.io/) (Google Cloud bucket
+`gs://weatherbench2/datasets/era5/`) or locally on Flare at
+`/flare/datasets/wb2/0.25deg_1_step_6hr_h5df_fix_bug/`.
+
+For the full IC builder and benchmark pipeline see the
+[agentic-wxbench](https://github.com/demetresfytanides/agentic-wxbench) project.
 
 ### 3. Submit the job
 
 Edit the variables block at the top of `inference/run_aeris.pbs`:
 
 ```bash
-IC_NC="/path/to/aeris_YYYYMMDDTHH.nc"   # your IC file
+IC_NC="samples/aeris_20240920T00.nc"    # sample IC (or your own)
 CYCLE="2024-09-20T00:00:00Z"            # forecast cycle (must match IC)
-OUT_DIR="/path/to/output"                # where member_XXX.nc files go
-MEMBERS=50                               # ensemble size
-LEAD_HOURS=240                           # forecast horizon
+OUT_DIR="/path/to/output"               # where member_XXX.nc files go
+MEMBERS=50                              # ensemble size
+LEAD_HOURS=240                          # forecast horizon
 ```
 
 Then submit:

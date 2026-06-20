@@ -2,6 +2,9 @@
 checkpoints/**/*.pth
 checkpoints/**/output/
 
+# Sample IC files (too large for git; present on Flare at samples/)
+samples/*.nc
+
 # Venv and pip cache (created by setup_venv.sh)
 data/
 
